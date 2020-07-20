@@ -11,5 +11,7 @@ public class BaseBatchProperties {
     private String StepThreadNamePrefix = "zxcp-batch-step-";
     private int stepCorePoolSize = 10;
     private int stepMaxPoolSize = 20;
+    private int fetchSize = 10000;
+    private int chunkSize = 10000;
 
 }

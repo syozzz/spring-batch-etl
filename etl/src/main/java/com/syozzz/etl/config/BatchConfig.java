@@ -1,14 +1,22 @@
 package com.syozzz.etl.config;
 
 import cn.hutool.core.lang.Assert;
+import com.syozzz.etl.builder.DataSourceBuilder;
 import com.syozzz.etl.builder.ExecutorBuilder;
+import com.syozzz.etl.builder.SqlBuilder;
+import com.syozzz.etl.builder.SqlType;
 import com.syozzz.etl.entity.BaseBatchProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.*;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.batch.core.launch.support.SimpleJobLauncher;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.repository.support.JobRepositoryFactoryBean;
+import org.springframework.batch.item.ItemReader;
+import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.database.JdbcBatchItemWriter;
+import org.springframework.batch.item.database.JdbcCursorItemReader;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,10 +24,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.ColumnMapRowMapper;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import javax.annotation.Resource;
 import javax.sql.DataSource;
+import java.util.Map;
 
 @Slf4j
 @Configuration
@@ -32,6 +42,12 @@ public class BatchConfig {
 
     @Autowired
     private StepBuilderFactory steps;
+
+    @Autowired
+    SqlBuilder sqlBuilder;
+
+    @Autowired
+    DataSourceBuilder dataSourceBuilder;
 
     @Resource(
             name = "${syozzz.etl.datasource:etldb}"
@@ -49,13 +65,6 @@ public class BatchConfig {
         return ExecutorBuilder.build(baseBatchProperties.getTaskThreadNamePrefix(),
                 baseBatchProperties.getTaskCorePoolSize(),
                 baseBatchProperties.getTaskMaxPoolSize());
-    }
-
-    @Bean("batchStepExecutor")
-    public ThreadPoolTaskExecutor stepBatchExecutor(BaseBatchProperties baseBatchProperties) {
-        return ExecutorBuilder.build(baseBatchProperties.getStepThreadNamePrefix(),
-                baseBatchProperties.getStepCorePoolSize(),
-                baseBatchProperties.getStepMaxPoolSize());
     }
 
     @Bean
@@ -85,6 +94,43 @@ public class BatchConfig {
                 return factory.getObject();
             }
         };
+    }
+
+    @Bean
+    @JobScope
+    Step taskStep(@Qualifier("commonJdbcItemReader") @StepScope ItemReader<Map<String, Object>> commonJdbcItemReader,
+                  @Qualifier("commonJdbcItemWritter") @StepScope ItemWriter<Map<String, Object>> commonJdbcItemWritter,
+                  BaseBatchProperties baseBatchProperties) {
+        return steps.get("taskStep")
+                .<Map<String, Object>, Map<String, Object>>chunk(baseBatchProperties.getChunkSize())
+                .reader(commonJdbcItemReader)
+                .writer(commonJdbcItemWritter)
+                .build();
+    }
+
+    //通用 ItemReader
+    @Bean
+    @StepScope
+    ItemReader<Map<String, Object>> commonJdbcItemReader(@Value("#{jobParameters}") Map<String, Object> jobParameters,
+                                                     BaseBatchProperties baseBatchProperties) throws Exception {
+        JdbcCursorItemReader<Map<String, Object>> reader = new JdbcCursorItemReader<>();
+        reader.setDataSource(dataSourceBuilder.get());
+        reader.setName("commonJdbcItemReader");
+        reader.setFetchSize(baseBatchProperties.getFetchSize());
+        reader.setSql(sqlBuilder.generateSql(SqlType.SELECT, jobParameters));
+        reader.setRowMapper(new ColumnMapRowMapper());
+        return reader;
+    }
+
+    //通用 ItemWritter
+    @Bean
+    @StepScope
+    ItemWriter<Map<String, Object>> commonJdbcItemWritter(@Value("#{jobParameters}") Map<String, Object> jobParameters) throws Exception {
+        JdbcBatchItemWriter<Map<String, Object>> writer = new JdbcBatchItemWriter<>();
+        writer.setDataSource(dataSourceBuilder.get());
+        writer.setSql(sqlBuilder.generateSql(SqlType.INSERT, jobParameters));
+        //因为处理的 item 是 map，所以无需设置 ItemSqlParameterSourceProvider
+        return writer;
     }
 
 }
