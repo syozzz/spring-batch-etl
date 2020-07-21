@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-@Component
 @ConditionalOnMissingBean(SqlBuilder.class)
+@Component
 public class DefaultSqlBuilder implements SqlBuilder {
 
     public static final String TABLE_NAME = "tableName";

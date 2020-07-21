@@ -46,13 +46,13 @@ public class BatchConfig {
     @Autowired
     SqlBuilder sqlBuilder;
 
-    @Autowired
-    DataSourceBuilder dataSourceBuilder;
-
     @Resource(
             name = "${syozzz.etl.datasource:etldb}"
     )
     private DataSource dataSource;
+
+    @Autowired
+    DataSourceBuilder dataSourceBuilder;
 
     @Bean
     @ConfigurationProperties(prefix = "syozzz.etl")
@@ -114,7 +114,7 @@ public class BatchConfig {
     ItemReader<Map<String, Object>> commonJdbcItemReader(@Value("#{jobParameters}") Map<String, Object> jobParameters,
                                                      BaseBatchProperties baseBatchProperties) throws Exception {
         JdbcCursorItemReader<Map<String, Object>> reader = new JdbcCursorItemReader<>();
-        reader.setDataSource(dataSourceBuilder.get());
+        reader.setDataSource(dataSourceBuilder.getSourceOne());
         reader.setName("commonJdbcItemReader");
         reader.setFetchSize(baseBatchProperties.getFetchSize());
         reader.setSql(sqlBuilder.generateSql(SqlType.SELECT, jobParameters));
@@ -127,7 +127,7 @@ public class BatchConfig {
     @StepScope
     ItemWriter<Map<String, Object>> commonJdbcItemWritter(@Value("#{jobParameters}") Map<String, Object> jobParameters) throws Exception {
         JdbcBatchItemWriter<Map<String, Object>> writer = new JdbcBatchItemWriter<>();
-        writer.setDataSource(dataSourceBuilder.get());
+        writer.setDataSource(dataSourceBuilder.getTargetOne());
         writer.setSql(sqlBuilder.generateSql(SqlType.INSERT, jobParameters));
         //因为处理的 item 是 map，所以无需设置 ItemSqlParameterSourceProvider
         return writer;
